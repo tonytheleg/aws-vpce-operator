@@ -30,9 +30,16 @@ import (
 // cleanupAwsResources cleans up AWS resources associated with a VPC Endpoint.
 func (r *VpcEndpointReconciler) cleanupAwsResources(ctx context.Context, resource *avov1alpha2.VpcEndpoint) error {
 	if meta.IsStatusConditionTrue(resource.Status.Conditions, avov1alpha2.AWSRoute53RecordCondition) {
-		resourceRecord, err := r.generateRoute53Record(ctx, resource)
-		if err != nil {
-			return err
+		if !resource.Spec.CustomDns.Route53PrivateHostedZone.AutoDiscover {
+			resourceRecord, err := r.generateRoute53Record(ctx, resource)
+			if err != nil {
+				return err
+			}
+		} else {
+			err := r.validateR53PrivateHostedZone(ctx, resource)
+			if err != nil {
+				return err
+			}
 		}
 
 		resp, err := r.awsClient.GetHostedZone(ctx, resource.Status.HostedZoneId)
@@ -66,7 +73,8 @@ func (r *VpcEndpointReconciler) cleanupAwsResources(ctx context.Context, resourc
 			r.log.V(0).Error(err, "failed to update status")
 			return err
 		}
-	}
+
+	} // <---
 
 	if resource.Status.HostedZoneId != "" {
 		// Only delete a Route53 Private Hosted Zone if AVO created it
